@@ -226,17 +226,19 @@ let largest_resident_vms config =
   List.fold_left max 0 num_vms_per_host
 
 let approximate_config config =
-  (* Assume all VMs are as big as the biggest *)
-  let vm_size = List.fold_left (fun acc (_, size) -> max acc size) 0L config.vms in
-  (* Assume each host has the max number of VMs on it *)
+  let biggest_host = fst (List.hd (List.sort less_than config.hosts)) in
+  (* Assume all VMs on biggest host are as big as the biggest protected-VM in the pool *)
+  let biggest_vm_size = List.fold_left (fun acc (_, size) -> max acc size) 0L config.vms in
+  (* Assume biggest host has the max number of VMs on it *)
   let number_vms = largest_resident_vms config in
-  (* Return a config which has all these VMs on it *)
-  (* Identify VMs by (host, index) in the abstract simulation *)
-  let vm_ids = List.concat (List.map (fun host -> List.map (fun idx -> host, idx) (mkints number_vms)) (List.map fst config.hosts)) in
+  (* Return a config with the biggest host has max number of VMs and all of the VMs has biggest size *)
+  let vm_ids = List.map (fun idx -> biggest_host, idx) (mkints number_vms) in
+  let vm_on_biggest_host = List.map (fun vm -> vm, biggest_vm_size) vm_ids in
+  let placement_on_biggest_host = List.map (fun vm -> vm, biggest_host) vm_ids in
   {
     hosts = config.hosts; (* host free memory is unapproximated *)
-    vms = List.map (fun vm -> vm, vm_size) vm_ids;
-    placement = List.map (fun ((host, idx) as vm) -> vm, host) vm_ids;
+    vms = List.filter (fun ((host, _), _) -> host <> biggest_host) config.vms @ vm_on_biggest_host;
+    placement = List.filter (fun ((host, _), _) -> host <> biggest_host) config.placement @ placement_on_biggest_host;
     num_failures = config.num_failures;
     total_hosts = config.total_hosts;
   }
